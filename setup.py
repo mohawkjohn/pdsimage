@@ -14,7 +14,7 @@ setup(name='pdsimage',
       author='Thorey Clement',
       author_email='clement.thorey@gmail.com',
       license='MIT',
-      packages=['pdsimage'],
+      packages=['pdsimage', 'test'],
       install_requires=[
           'numpy>=1.6',
           'six>=1.3.0',
@@ -26,4 +26,5 @@ setup(name='pdsimage',
           'requests',
           'sphinxcontrib-napoleon'],
       include_package_data=True,
-      zip_safe=False)
+      zip_safe=False,
+      test_suite='test.pdsimage_test_suite')

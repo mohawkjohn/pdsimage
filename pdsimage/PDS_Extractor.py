@@ -11,6 +11,7 @@ from pvl import load as load_label
 
 # Helper to catch images from URLs
 import urllib
+import urllib.request
 import requests
 
 
@@ -162,10 +163,10 @@ class BinaryTable(object):
     def _downloadfile(self, url, fname):
         ''' Download the image '''
 
-        print("The file %s need to be download - Wait\n " %
+        print("The file %s needs to be downloaded - Wait\n " %
               (fname.split('/')[-1]))
-        urllib.urlretrieve(url, fname, self._report)
-        print("\n The download of the file %s has succeded \n " %
+        urllib.request.urlretrieve(url, fname, self._report)
+        print("\n The download of the file %s has succeeded \n " %
               (fname.split('/')[-1]))
 
     def _user_yes_no_query(self, question):
@@ -178,24 +179,45 @@ class BinaryTable(object):
         sys.stdout.write('%s [y/n]\n' % question)
         while True:
             try:
-                return strtobool(raw_input().lower())
+                return strtobool(input().lower())
             except ValueError:
                 sys.stdout.write('Please respond with \'y\' or \'n\'.\n')
 
     def _detect_size(self, url):
         """ Helper that detect the size of the image to be download"""
 
-        site = urllib.urlopen(url)
-        meta = site.info()
-        return float(meta.getheaders("Content-Length")[0]) / 1e6
+        site = urllib.request.urlopen(url)
+        return float(site.headers["Content-Length"]) / 1e6
 
+
+    def _extract_images(self, r, table = False):
+        """Extract the list of images from the downloaded bytes."""
+        images = []
+        for elt in r.iter_lines():
+            fields = elt.split(b'"')
+            if table and len(fields) > 7:
+                subfields = fields[7].split(b'.')
+            elif len(fields) > 2:
+                subfields = fields[1].split(b'.')
+            else:
+                continue
+            
+            if len(subfields) > 1 and subfields[1] == b'IMG':
+                images.append(subfields[0].decode('ascii'))
+
+            #if table:
+            #    import pdb
+            #    pdb.set_trace()
+
+        return images
+    
     def _maybe_download(self):
         """ Helper to downlaod the image if not in path """
         if self.grid == 'WAC':
             urlpath = 'http://lroc.sese.asu.edu/data/LRO-L-LROC-5-RDR-V1.0/LROLRC_2001/DATA/BDR/WAC_GLOBAL/'
             r = requests.get(urlpath)  # List file in the cloud
-            images = [elt.split('"')[7].split('.')[0]
-                      for elt in r.iter_lines() if len(elt.split('"')) > 7]
+            images = self._extract_images(r, True)
+            
             if self.fname not in images:
                 raise ValueError("%s : Image does not exist\n.\
                                  Possible images are:\n %s" % (self.fname, '\n, '.join(images[2:])))
@@ -213,8 +235,8 @@ class BinaryTable(object):
         elif self.grid == 'LOLA':
             urlpath = 'http://imbrium.mit.edu/DATA/LOLA_GDR/CYLINDRICAL/IMG/'
             r = requests.get(urlpath)  # List file in this server
-            images = [elt.split('"')[7].split('.')[0]
-                      for elt in r.iter_lines() if len(elt.split('"')) > 7]
+            images = self._extract_images(r)
+            
             if self.fname not in images:
                 raise ValueError("%s : Image does not exist\n.\
                                  Possible images are:\n %s" % (self.fname, '\n, '.join(images[2:])))
@@ -248,9 +270,9 @@ class BinaryTable(object):
         """
         if self.grid == 'WAC':
             label = load_label(self.img)
-            for key, val in label.iteritems():
+            for key, val in label.items():
                 if type(val) == pvl._collections.PVLObject:
-                    for key, value in val.iteritems():
+                    for key, value in val.items():
                         try:
                             setattr(self, key, value.value)
                         except:
@@ -405,13 +427,13 @@ class BinaryTable(object):
         '''
 
         longmin, longmax, latmin, latmax = self.Boundary()
-        sample_min, sample_max = map(
-            int, (self.SAMPLE_FIRST_PIXEL, self.SAMPLE_LAST_PIXEL))
-        line_min, line_max = map(
-            int, (self.LINE_FIRST_PIXEL, self.LINE_LAST_PIXEL))
+        sample_min, sample_max = list(map(
+            int, (self.SAMPLE_FIRST_PIXEL, self.SAMPLE_LAST_PIXEL)))
+        line_min, line_max = list(map(
+            int, (self.LINE_FIRST_PIXEL, self.LINE_LAST_PIXEL)))
 
-        X = np.array(map(self.long_id, (range(sample_min, sample_max + 1, 1))))
-        Y = np.array(map(self.lat_id, (range(line_min, line_max + 1, 1))))
+        X = np.array(list(map(self.long_id, (range(sample_min, sample_max + 1, 1)))))
+        Y = np.array(list(map(self.lat_id, (range(line_min, line_max + 1, 1)))))
         for i, line in enumerate(range(int(line_min), int(line_max) + 1)):
             start = (line - 1) * int(self.SAMPLE_LAST_PIXEL) + sample_min
             chunk_size = int(sample_max - sample_min)
@@ -435,7 +457,7 @@ class BinaryTable(object):
             latmax (float): Maximum latitude of the window
 
         Returns:
-            A tupple of three arrays ``(X,Y,Z)`` with ``X`` contains the
+            A tuple of three arrays ``(X,Y,Z)`` with ``X`` contains the
             longitudes, ``Y`` contains the latitude and ``Z`` the values
             extracted from the window.
 
@@ -446,11 +468,11 @@ class BinaryTable(object):
 
         '''
 
-        sample_min, sample_max = map(
-            int, map(self.sample_id, [longmin, longmax]))
-        line_min, line_max = map(int, map(self.line_id, [latmax, latmin]))
-        X = np.array(map(self.long_id, (range(sample_min, sample_max, 1))))
-        Y = np.array(map(self.lat_id, (range(line_min, line_max + 1, 1))))
+        sample_min, sample_max = list(map(
+            int, list(map(self.sample_id, [longmin, longmax]))))
+        line_min, line_max = list(map(int, list(map(self.line_id, [latmax, latmin]))))
+        X = np.array(list(map(self.long_id, (range(sample_min, sample_max, 1)))))
+        Y = np.array(list(map(self.lat_id, (range(line_min, line_max + 1, 1)))))
 
         for i, line in enumerate(range(int(line_min), int(line_max) + 1)):
             start = (line - 1) * int(self.SAMPLE_LAST_PIXEL) + sample_min
@@ -460,7 +482,7 @@ class BinaryTable(object):
                 Z = Za
             else:
                 Z = np.vstack((Z, Za))
-
+                
         X, Y = np.meshgrid(X, Y)
 
         return X, Y, Z
@@ -662,7 +684,7 @@ class WacMap(object):
         assert self.ppd in implemented_res, \
             ' Resolution %d ppd not implemented yet\n.\
             Consider using one of the implemented resolutions %s'\
-            % (self.ppd, ', '.join([f + ' ppd' for f in map(str, implemented_res)]))
+            % (self.ppd, ', '.join([f + ' ppd' for f in list(map(str, implemented_res))]))
 
         if self.ppd == 256:
             assert (np.abs(self.latM) < 60) and (np.abs(self.latm) < 60),\
@@ -689,20 +711,20 @@ class WacMap(object):
             'long', self.lonM) != self._map_center('long', self.lonm)
         latBool = self._map_center(
             'lat', self.latM) != self._map_center('lat', self.latm)
-
+        
         if not lonBool and not latBool:
             print('No overlap - Processing should be quick')
             return self._cas_1()
         elif lonBool and not latBool:
-            print('Longitude overlap - 2 images have to be proceded \n \
+            print('Longitude overlap - 2 images have to be processed \n \
                   Processing could take a few seconds')
             return self._cas_2()
         elif not lonBool and latBool:
-            print('Latitude overlap - 2 images have to be proceded \n\
+            print('Latitude overlap - 2 images have to be processed \n\
                   Processing could take a few seconds')
             return self._cas_3()
         else:
-            print('Latitude/Longidude overlaps - 4 images have to be proceded \n\
+            print('Latitude/Longidude overlaps - 4 images have to be processed \n\
                   Processing could take a few seconds')
             return self._cas_4()
 
@@ -967,7 +989,7 @@ class LolaMap(WacMap):
         if self.ppd in [4, 16, 64, 128]:
             return None
         else:
-            return map(lambda x: "{0:0>3}".format(int(x)), self._map_center('long', lon))
+            return list(map(lambda x: "{0:0>3}".format(int(x)), self._map_center('long', lon)))
 
     def _format_lat(self, lat):
         ''' Returned a formated latitude format for the file '''
@@ -975,11 +997,9 @@ class LolaMap(WacMap):
             return None
         else:
             if lat < 0:
-                return map(lambda x: "{0:0>2}"
-                           .format(int(np.abs(x))) + 'S', self._map_center('lat', lat))
+                return list(map(lambda x: "{0:0>2}".format(int(np.abs(x))) + 'S', self._map_center('lat', lat)))
             else:
-                return map(lambda x: "{0:0>2}"
-                           .format(int(x)) + 'N', self._map_center('lat', lat))
+                return list(map(lambda x: "{0:0>2}".format(int(x)) + 'N', self._map_center('lat', lat)))
 
     def _format_name_map(self, lon, lat):
         ''' Return the name of the map in the good format '''

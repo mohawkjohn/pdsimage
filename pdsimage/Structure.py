@@ -5,12 +5,17 @@ import os
 import sys
 
 # Load specific library
-from PDS_Extractor import *
+from pdsimage.PDS_Extractor import *
 import numpy as np
 import pandas as pd
 import scipy.ndimage
 import matplotlib.pylab as plt
-from mpl_toolkits.basemap import Basemap
+
+
+#from mpl_toolkits.basemap import Basemap
+import cartopy.crs as ccrs
+import matplotlib # for colorbar
+import matplotlib.pyplot as plt
 from matplotlib import cm
 import matplotlib.gridspec as gridspec
 
@@ -77,6 +82,7 @@ class Area(object):
 
     defaut_pdsfile = os.path.join(
         '/'.join(os.path.abspath(__file__).split('/')[:-1]), 'PDS_FILES')
+    rsphere = 1737400
 
     def __init__(self, lon0, lat0, Size, path_pdsfile=defaut_pdsfile):
 
@@ -85,6 +91,10 @@ class Area(object):
         self.lon0 = lon0
         self.ppdlola = 512
         self.ppdwac = 128
+        self.globe = ccrs.Globe(semimajor_axis=self.rsphere, semiminor_axis=self.rsphere)
+        self.laea = ccrs.LambertAzimuthalEqualArea(central_longitude=self.lon0,
+                                                   central_latitude=self.lat0,
+                                                   globe=self.globe)
         assert (self.lon0 > 0.0) and (
             self.lon0 < 360.0), 'Longitude has to span 0-360 !!!'
         self.change_window(Size)
@@ -212,10 +222,12 @@ class Area(object):
                        format='%d',
                        zorder=2)
 
-    def _add_colorbar(self, m, CS, ax, name):
+    def _add_colorbar(self, CS, ax, name):
         ''' Add colorbar to the map instance '''
 
-        cb = m.colorbar(CS, "right", size="5%", pad="2%")
+        cax, kw = matplotlib.colorbar.make_axes(ax, location='right', pad=0.02, shrink=1.0)
+        fig = plt.gcf()
+        cb = fig.colorbar(CS, cax=cax, extend='both')
         cb.set_label(name, size=34)
         cb.ax.tick_params(labelsize=18)
 
@@ -345,18 +357,17 @@ class Area(object):
 
         for i, coordinate in enumerate(coordinates):
 
-            ax1 = plt.subplot(gs[i, :2])
-            ax2 = plt.subplot(gs[i, 2:])
 
             # Image unit
             lon_m, lon_M, lat_m, lat_M = self.window
-            m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
-                        resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
+            #m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
+            #            resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
+            ax1 = plt.subplot(gs[i, :2], projection=self.laea)
+            ax2 = plt.subplot(gs[i, 2:], projection=self.laea)            
+            
             X, Y, Z = self.get_arrays('lola')
-            X, Y = m(X, Y)
-            CS = m.pcolormesh(X, Y, Z, cmap='gist_earth',
-                              alpha=1, ax=ax1, zorder=1)
-            self._format_coordinate(ax1, m)
+            CS = plt.pcolormesh(X, Y, Z, transform=self.laea, cmap='gist_earth', alpha=1, ax=ax1, zorder=1)
+            #self._format_coordinate(ax1, m)
 
             lon1, lon0, lat1, lat0 = coordinate
             lon0, lat0 = m(lon0, lat0)
@@ -396,25 +407,22 @@ class Area(object):
         '''
 
         fig = plt.figure(figsize=(10, 8))
-        ax1 = fig.add_subplot(111)
+
 
         lon_m, lon_M, lat_m, lat_M = self.lambert_window(
             self.size_window, self.lat0, self.lon0)
-        m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
-                    resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
-
+        #m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
+        #            resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
+        ax1 = fig.add_subplot(111, projection=self.laea)
+        
         Xl, Yl, Zl = self.get_arrays('Lola')
-        Xl, Yl = m(Xl, Yl)
+        CS = plt.pcolormesh(Xl, Yl, Zl, transform=self.laea, cmap='gist_earth', alpha=0.5, ax=ax1, zorder=1)
+        # plt.contour(Xl, Yl, Zl, 20, transform=laea, colors='black', alpha=1.0, zorder=2)
 
-        CS = m.pcolormesh(Xl, Yl, Zl, cmap='gist_earth',
-                          alpha=.5, ax=ax1, zorder=1)
-        # m.contour(Xl,Yl,Zl,20, colors = 'black', alpha = 1.0 , zorder=2)
+        ax1.scatter(self.lon0, self.lat0, transform=self.laea, s=200, marker='v', zorder=2)
 
-        xc, yc = m(self.lon0, self.lat0)
-        ax1.scatter(xc, yc, s=200, marker='v', zorder=2)
-
-        self._add_scale(m, ax1)
-        self._add_colorbar(m, CS, ax1, 'Topography')
+        #self._add_scale(m, ax1)
+        self._add_colorbar(CS, ax1, 'Topography')
 
         if save == True:
             fig.savefig(name, rasterized=True, dpi=50,
@@ -443,21 +451,19 @@ class Area(object):
         '''
 
         fig = plt.figure(figsize=(10, 8))
-        ax1 = fig.add_subplot(111)
+        ax1 = fig.add_subplot(111, projection=self.laea)
+        
+        lon_m, lon_M, lat_m, lat_M = self.lambert_window(self.size_window, self.lat0, self.lon0)
 
-        lon_m, lon_M, lat_m, lat_M = self.lambert_window(
-            self.size_window, self.lat0, self.lon0)
-        m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
-                    resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
+        #m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
+        #            resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
 
         Xw, Yw, Zw = self.get_arrays('Wac')
-        Xw, Yw = m(Xw, Yw)
-        grid = m.pcolormesh(Xw, Yw, Zw, cmap=cm.gray, ax=ax1, zorder=1)
+        grid = plt.pcolormesh(Xw, Yw, Zw, transform=self.laea, cmap=cm.gray, ax=ax1, zorder=1)
 
-        xc, yc = m(self.lon0, self.lat0)
-        ax1.scatter(xc, yc, s=200, marker='v', zorder=2)
+        ax1.scatter(self.lon0, self.lat0, transform=self.laea, s=200, marker='v', zorder=2)
 
-        self._add_scale(m, ax1)
+        #self._add_scale(m, ax1)
 
         if save == True:
             fig.savefig(name, dpi=50, bbox_inches='tight', pad_inches=0.1)
@@ -486,27 +492,25 @@ class Area(object):
         '''
 
         fig = plt.figure(figsize=(10, 8))
-        ax1 = fig.add_subplot(111)
+        ax1 = fig.add_subplot(111, projection=self.laea)
 
         lon_m, lon_M, lat_m, lat_M = self.lambert_window(
             self.size_window, self.lat0, self.lon0)
-        m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
-                    resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
+        #m = Basemap(llcrnrlon=lon_m, llcrnrlat=lat_m, urcrnrlon=lon_M, urcrnrlat=lat_M,
+        #            resolution='i', projection='laea', rsphere=1734400, lat_0=self.lat0, lon_0=self.lon0)
 
         Xw, Yw, Zw = self.get_arrays('Wac')
-        Xw, Yw = m(Xw, Yw)
-        m.pcolormesh(Xw, Yw, Zw, cmap=cm.gray, ax=ax1, zorder=1)
+        ax1.pcolormesh(Xw, Yw, Zw, transform=self.laea, cmap=cm.gray, zorder=1)
+        
 
         Xl, Yl, Zl = self.get_arrays('Lola')
-        Xl, Yl = m(Xl, Yl)
-        CS = m.contourf(Xl, Yl, Zl, 100, cmap='gist_earth',
-                        alpha=0.4, zorder=2, antialiased=True)
+        CS = plt.contourf(Xl, Yl, Zl, 100, transform=self.laea, cmap='gist_earth',
+                          alpha=0.4, zorder=2, antialiased=True)
 
-        xc, yc = m(self.lon0, self.lat0)
-        ax1.scatter(xc, yc, s=200, marker='v', zorder=2)
-
-        self._add_scale(m, ax1)
-        self._add_colorbar(m, CS, ax1, 'Topography')
+        ax1.scatter(self.lon0, self.lat0, transform=self.laea, s=200, marker='v', zorder=2)
+        
+        #self._add_scale(m, ax1)
+        self._add_colorbar(CS, ax1, 'Topography')
 
         if save == True:
             fig.savefig(name, dpi=50, bbox_inches='tight', pad_inches=0.1)
@@ -608,11 +612,17 @@ class Crater(Area):
                 return str(x)
 
         [setattr(self, f, switchtype(df[f])) for f in df.columns]
+        
+        self.globe = ccrs.Globe(semimajor_axis=self.rsphere, semiminor_axis=self.rsphere)
+        self.laea = ccrs.LambertAzimuthalEqualArea(central_longitude=self.lon0,
+                                                   central_latitude=self.lat0,
+                                                   globe=self.globe)
 
         assert (self.lon0 > 0.0) & (
             self.lon0 < 360.0), 'Longitude has to span 0-360 !!!'
         self.name = df.name.iloc[0]
         self.change_window(0.8 * self.diameter)
+
 
 
 class Dome(Area):
